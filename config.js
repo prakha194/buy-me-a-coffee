@@ -14,12 +14,12 @@ window.BMAC_CONFIG = {
   // Leave it empty and the page still works, but each visitor only
   // sees their own browser's list.
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: ''
+    apiKey: "AIzaSyB9VvCN25LkGM2gePiMPhQ1lCKez_MyPl0",
+    authDomain: "buy-me-a-coffee-197b7.firebaseapp.com",
+    projectId: "buy-me-a-coffee-197b7",
+    storageBucket: "buy-me-a-coffee-197b7.firebasestorage.app",
+    messagingSenderId: "573190316198",
+    appId: "1:573190316198:web:32f790af128ec66bd51467"
   },
   collection: 'supporters',
 
