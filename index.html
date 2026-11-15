@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buy Me a Coffee</title>
+  <script src="config.js"></script>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <script>
@@ -13,12 +14,11 @@
        same APIs. When a Neon Data API endpoint is configured below, supporters are
        stored in Postgres and every visitor sees the same list; otherwise the page
        falls back to this browser's localStorage. */
-    var BMAC_CONFIG = {
-      // Paste the Neon Data API endpoint here (Neon Console -> Data API).
-      // Example: 'https://ep-cool-name-123456.apirest.ap-southeast-1.aws.neon.tech/rest/v1'
-      dataApiUrl: '',
-      table: 'supporters'
-    };
+    // Everything editable lives in config.js — this file only reads it.
+    var BMAC_CONFIG = Object.assign(
+      { dataApiUrl: '', table: 'supporters' },
+      window.BMAC_CONFIG || {}
+    );
 
     (function () {
       var STORE_KEY = 'bmac_supporters_v1';
@@ -207,7 +207,7 @@
       <input type="email" id="supporter-email" placeholder="your@email.com" class="w-full px-4 py-3 rounded-xl text-base outline-none" style="background-color: #FFF9F0; border: 2px solid #E8DDD0; color: #4A3728;" onfocus="this.style.borderColor='#FFDD00'" onblur="this.style.borderColor='#E8DDD0'">
      </div><!-- Support Button --> <button id="support-btn" onclick="openPaymentModal()" class="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-[0.98]" style="background-color: #FFDD00; color: #4A3728; border: none;"> <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 40px;"> </button>
     </div>
-    <div class="mt-4 flex justify-center"><a href="https://github.com/prakha194" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-full transition-all hover:brightness-90" style="background-color: #4A3728; color: #FFDD00;">
+    <div class="mt-4 flex justify-center"><a id="github-link" href="https://github.com/prakha194" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-full transition-all hover:brightness-90" style="background-color: #4A3728; color: #FFDD00;">
       <svg width="20" height="20" viewbox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
       </svg></a>
     </div>
@@ -261,15 +261,20 @@
    </div>
   </div>
   <script>
-    const UPI_ID = 'prashantkhati12345@okaxis';
+    const SITE = window.BMAC_CONFIG || {};
+    const UPI_ID = SITE.upiId || 'prashantkhati12345@okaxis';
+    if (SITE.githubUrl) {
+      const gh = document.getElementById('github-link');
+      if (gh) gh.href = SITE.githubUrl;
+    }
     let selectedAmount = 0;
     let allSupporters = [];
     let isSubmitting = false;
 
     const defaultConfig = {
-      creator_name: 'Prashant',
-      page_tagline: 'Fueling creativity, one coffee at a time ☕',
-      thank_you_message: 'Thank you for your support, it means a lot! ☕✨',
+      creator_name: SITE.creatorName || 'Prashant',
+      page_tagline: SITE.tagline || 'Fueling creativity, one coffee at a time ☕',
+      thank_you_message: SITE.thankYouMessage || 'Thank you for your support, it means a lot! ☕✨',
       background_color: '#FFF9F0',
       surface_color: '#FFFFFF',
       text_color: '#4A3728',
@@ -430,7 +435,7 @@
           ctx.fillText('Follow on GitHub', canvas.width / 2, canvas.height - 40);
           ctx.fillStyle = '#0066CC';
           ctx.font = 'bold 18px Nunito';
-          ctx.fillText('https://github.com/prakha194', canvas.width / 2, canvas.height - 10);
+          ctx.fillText(SITE.githubUrl || 'https://github.com/prakha194', canvas.width / 2, canvas.height - 10);
           
           // Download
           const link = document.createElement('a');
