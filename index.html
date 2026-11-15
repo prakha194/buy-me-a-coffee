@@ -6,8 +6,67 @@
   <title>Buy Me a Coffee</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
-  <script src="/_sdk/element_sdk.js"></script>
-  <script src="/_sdk/data_sdk.js"></script>
+  <script>
+    /* Standalone fallbacks.
+       The original page loaded two builder-only scripts (/_sdk/element_sdk.js and
+       /_sdk/data_sdk.js) which do not exist on GitHub Pages, so the page threw at
+       load and the thank-you flow + supporter list never ran. These shims expose
+       the same APIs and persist supporters in the browser via localStorage. */
+    (function () {
+      var STORE_KEY = 'bmac_supporters_v1';
+
+      function readStore() {
+        try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; }
+      }
+      function writeStore(list) {
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) {}
+      }
+      function withIds(list) {
+        return list.map(function (r, i) { return Object.assign({}, r, { __backendId: r.id || ('local-' + i) }); });
+      }
+
+      var listeners = [];
+      function emit() {
+        var list = withIds(readStore());
+        listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
+      }
+
+      window.dataSdk = {
+        init: function (opts) {
+          if (opts && typeof opts.onDataChanged === 'function') {
+            listeners.push(opts.onDataChanged);
+            opts.onDataChanged(withIds(readStore()));
+          }
+          return Promise.resolve({ isOk: true });
+        },
+        create: function (record) {
+          var list = readStore();
+          list.push(Object.assign({}, record, {
+            id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+          }));
+          writeStore(list);
+          emit();
+          return Promise.resolve({ isOk: true });
+        },
+        list: function () { return Promise.resolve(withIds(readStore())); }
+      };
+
+      window.elementSdk = {
+        config: null,
+        init: function (opts) {
+          this.config = Object.assign({}, (opts && opts.defaultConfig) || {});
+          if (opts && typeof opts.onConfigChange === 'function') {
+            try { opts.onConfigChange(this.config); } catch (e) { console.warn(e); }
+          }
+          return { isOk: true };
+        },
+        setConfig: function (patch) {
+          this.config = Object.assign({}, this.config || {}, patch || {});
+          return this.config;
+        }
+      };
+    })();
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -73,7 +132,7 @@
        <path d="M17 8h1a4 4 0 1 1 0 8h-1" /> <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" /> <line x1="6" y1="2" x2="6" y2="4" /> <line x1="10" y1="2" x2="10" y2="4" /> <line x1="14" y1="2" x2="14" y2="4" />
       </svg>
      </div>
-     <h1 class="text-3xl font-extrabold" style="color: #4A3728;">☕ Buy Me a Coffee</h1>
+     <h1 id="el-creator-name" class="text-3xl font-extrabold" style="color: #4A3728;">☕ Buy Me a Coffee</h1>
      <p id="el-tagline" class="mt-2 text-lg" style="color: #8B7355;"></p>
     </div><!-- Coffee Card -->
     <div class="rounded-2xl p-6 shadow-lg fade-up-d1" style="background-color: #FFFFFF; border: 2px solid #FFDD00;">
@@ -138,7 +197,7 @@
      🎉
     </div>
     <h2 class="thank-you-text text-3xl font-extrabold mb-4" style="color: #4A3728;">Thank You!</h2>
-    <p id="thank-you-msg" class="text-lg mb-6" style="color: #8B7355;">Your support means the world to us! ☕✨</p><button onclick="backToHome()" class="w-full py-3 rounded-xl font-bold" style="background-color: #FFDD00; color: #4A3728; border: none;">🏠 Home</button>
+    <p id="thank-you-msg" class="text-lg mb-6" style="color: #8B7355;">Thank you for your support, it means a lot! ☕✨</p><button onclick="backToHome()" class="w-full py-3 rounded-xl font-bold" style="background-color: #FFDD00; color: #4A3728; border: none;">🏠 Home</button>
    </div>
   </div>
   <script>
@@ -148,9 +207,9 @@
     let isSubmitting = false;
 
     const defaultConfig = {
-      creator_name: 'Your Name',
+      creator_name: 'Prashant',
       page_tagline: 'Fueling creativity, one coffee at a time ☕',
-      thank_you_message: 'Thank you so much! You made my day! 🎉',
+      thank_you_message: 'Thank you for your support, it means a lot! ☕✨',
       background_color: '#FFF9F0',
       surface_color: '#FFFFFF',
       text_color: '#4A3728',
@@ -546,6 +605,7 @@
 
       document.getElementById('app').style.backgroundColor = c.background_color;
       document.getElementById('el-creator-name').style.color = c.text_color;
+      document.getElementById('el-tagline').textContent = c.page_tagline;
       document.getElementById('el-tagline').style.color = c.secondary_text_color;
 
       const base = c.font_size || defaultConfig.font_size;
@@ -587,5 +647,5 @@
       }
     })();
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e6ac7dc01cf8fbc',t:'MTc3NTI0NzY5OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ </body>
 </html>
