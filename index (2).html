@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buy Me a Coffee</title>
+  <script src="firebase-config.js"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script>
+    /* Page bootstrap.
+       The Firebase/Firestore data layer lives in firebase-config.js, which is
+       loaded just above. If that file is missing or its config is blank, the
+       small fallback below keeps the page working with this browser's
+       localStorage. The elementSdk shim is left over from the original builder
+       page and only drives the config/wording pass. */
+    var BMAC_CONFIG = Object.assign({}, window.BMAC_CONFIG || {});
+
+    (function () {
+      var STORE_KEY = 'bmac_supporters_v1';
+
+      function readStore() {
+        try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; }
+      }
+      function writeStore(list) {
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) {}
+      }
+      function withIds(list) {
+        return list.map(function (r, i) { return Object.assign({}, r, { __backendId: r.id || ('local-' + i) }); });
+      }
+
+      // Only used when firebase-confi.js did not provide a data layer.
+      if (!window.dataSdk) {
+        var listeners = [];
+        window.dataSdk = {
+          init: function (opts) {
+            if (opts && typeof opts.onDataChanged === 'function') {
+              listeners.push(opts.onDataChanged);
+              opts.onDataChanged(withIds(readStore()));
+            }
+            return Promise.resolve({ isOk: true });
+          },
+          create: function (record) {
+            var list = readStore();
+            list.push({
+              name: record.name,
+              amount: record.amount,
+              created_at: record.created_at,
+              id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+            });
+            writeStore(list);
+            var all = withIds(list);
+            listeners.forEach(function (fn) { try { fn(all); } catch (e) { console.warn(e); } });
+            return Promise.resolve({ isOk: true });
+          },
+          list: function () { return Promise.resolve(withIds(readStore())); }
+        };
+      }
+
+      window.elementSdk = {
+        config: null,
+        init: function (opts) {
+          this.config = Object.assign({}, (opts && opts.defaultConfig) || {});
+          if (opts && typeof opts.onConfigChange === 'function') {
+            try { opts.onConfigChange(this.config); } catch (e) { console.warn(e); }
+          }
+          return { isOk: true };
+        },
+        setConfig: function (patch) {
+          this.config = Object.assign({}, this.config || {}, patch || {});
+          return this.config;
+        }
+      };
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { font-family: 'Nunito', sans-serif; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes heartBeat {
+      0%, 100% { transform: scale(1); }
+      25% { transform: scale(1.1); }
+      50% { transform: scale(1); }
+    }
+    @keyframes confetti {
+      to { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+    }
+    .fade-up { animation: fadeUp 0.6s ease-out both; }
+    .fade-up-d1 { animation: fadeUp 0.6s ease-out 0.1s both; }
+    .fade-up-d2 { animation: fadeUp 0.6s ease-out 0.2s both; }
+    .fade-up-d3 { animation: fadeUp 0.6s ease-out 0.3s both; }
+    .toast-enter {
+      animation: fadeUp 0.3s ease-out both;
+    }
+    .supporter-item {
+      animation: fadeUp 0.4s ease-out both;
+    }
+    .modal-overlay {
+      animation: fadeIn 0.2s ease-out both;
+    }
+    .modal-content {
+      animation: fadeUp 0.3s ease-out both;
+    }
+    .thank-you-container {
+      animation: scaleIn 0.5s ease-out both;
+    }
+    .thank-you-text {
+      animation: heartBeat 0.6s ease-in-out 0.3s both;
+    }
+    .confetti-piece {
+      animation: confetti 2.5s ease-in forwards;
+      position: fixed;
+      pointer-events: none;
+    }
+  </style>
+  <style>body { box-sizing: border-box; }</style>
+ </head>
+ <body class="h-full">
+  <div id="app" class="h-full w-full overflow-auto" style="background-color: #FFF9F0;">
+   <!-- Main Content -->
+   <div class="max-w-lg mx-auto px-4 py-8">
+    <!-- Profile Section -->
+    <div class="text-center fade-up mb-8">
+     <div class="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center overflow-hidden" style="background-color: #FFDD00;">
+      <img id="creator-avatar" src="https://github.com/prakha194.png" alt="Prashant" width="88" height="88" class="rounded-full object-cover" style="width: 88px; height: 88px; pointer-events: none; user-select: none;" draggable="false">
+     </div>
+     <h1 id="el-creator-name" class="text-3xl font-extrabold" style="color: #4A3728;">☕ Buy Me a Coffee</h1>
+     <p id="el-tagline" class="mt-2 text-lg" style="color: #8B7355;"></p>
+    </div><!-- Coffee Card -->
+    <div class="rounded-2xl p-6 shadow-lg fade-up-d1" style="background-color: #FFFFFF; border: 2px solid #FFDD00;">
+     <!-- Coffee Icon -->
+     <div class="flex justify-center mb-4"><span class="text-5xl">☕</span>
+     </div>
+     <h2 class="text-center text-lg font-bold mb-5" style="color: #4A3728;">Support my work!</h2><!-- Name Input -->
+     <div class="mb-3">
+      <input type="text" id="supporter-name" placeholder="Enter your name" class="w-full px-4 py-3 rounded-xl text-base outline-none" style="background-color: #FFF9F0; border: 2px solid #E8DDD0; color: #4A3728;" onfocus="this.style.borderColor='#FFDD00'" onblur="this.style.borderColor='#E8DDD0'">
+     </div><!-- Email Input -->
+     <div class="mb-3">
+      <input type="email" id="supporter-email" placeholder="your@email.com" class="w-full px-4 py-3 rounded-xl text-base outline-none" style="background-color: #FFF9F0; border: 2px solid #E8DDD0; color: #4A3728;" onfocus="this.style.borderColor='#FFDD00'" onblur="this.style.borderColor='#E8DDD0'">
+     </div><!-- Support Button --> <button id="support-btn" onclick="openPaymentModal()" class="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-[0.98]" style="background-color: #FFDD00; color: #4A3728; border: none;"> <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 40px;"> </button>
+    </div>
+    <div class="mt-4 flex justify-center"><a id="github-link" href="https://github.com/prakha194" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-full transition-all hover:brightness-90" style="background-color: #4A3728; color: #FFDD00;">
+      <svg width="20" height="20" viewbox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+      </svg></a>
+    </div>
+   </div><!-- Toast -->
+   <div id="toast" class="hidden fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg font-semibold z-50" style="background-color: #4A3728; color: #FFDD00;">
+    <span id="toast-text"></span>
+   </div><!-- Recent Supporters -->
+   <div class="mt-8 fade-up-d2">
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2" style="color: #4A3728;"><span>❤️</span> Recent Supporters</h2>
+    <div id="supporters-list" class="space-y-3">
+     <p id="no-supporters" class="text-center py-6 rounded-xl" style="color: #8B7355; background-color: #FFFFFF;">No supporters yet. Be the first! 🎉</p>
+    </div>
+    <p id="supporter-count" class="text-center mt-4 text-sm font-semibold" style="color: #8B7355;"></p>
+   </div><!-- Footer -->
+   <div class="mt-10 mb-6 text-center fade-up-d3">
+    <p class="text-xs" style="color: #C4B89C;">Powered by your generosity ☕✨</p>
+   </div>
+  </div><!-- Payment Modal -->
+  <div id="payment-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background-color: rgba(0,0,0,0.5);">
+   <div class="modal-content rounded-2xl p-6 mx-4 w-full max-w-sm" style="background-color: #FFFFFF;">
+    <div class="flex items-center justify-between mb-4">
+     <h3 class="text-xl font-bold" style="color: #4A3728;">Select Amount</h3><button onclick="closePaymentModal()" class="text-2xl" style="color: #8B7355;">✕</button>
+    </div>
+    <div class="space-y-2 mb-6"><button onclick="selectAmount(100)" class="w-full py-3 px-4 rounded-xl font-bold border-2 transition-all" style="background-color: #FFF9F0; border-color: #E8DDD0; color: #4A3728;">₹100</button> <button onclick="selectAmount(250)" class="w-full py-3 px-4 rounded-xl font-bold border-2 transition-all" style="background-color: #FFF9F0; border-color: #E8DDD0; color: #4A3728;">₹250</button> <button onclick="selectAmount(500)" class="w-full py-3 px-4 rounded-xl font-bold border-2 transition-all" style="background-color: #FFF9F0; border-color: #E8DDD0; color: #4A3728;">₹500</button> <button onclick="selectAmount(1000)" class="w-full py-3 px-4 rounded-xl font-bold border-2 transition-all" style="background-color: #FFF9F0; border-color: #E8DDD0; color: #4A3728;">₹1000</button>
+    </div>
+    <div class="mb-4"><label class="block text-sm font-bold mb-2" style="color: #4A3728;">Custom Amount (₹)</label> <input type="number" id="custom-amount" placeholder="Enter amount" class="w-full px-4 py-2 rounded-xl border-2 outline-none" style="border-color: #E8DDD0; color: #4A3728;" onfocus="this.style.borderColor='#FFDD00'" onblur="this.style.borderColor='#E8DDD0'">
+    </div>
+    <div id="payment-method" class="hidden space-y-3">
+     <h4 class="font-bold" style="color: #4A3728;">Choose Payment Method</h4><button onclick="showQRCode()" class="w-full py-3 px-4 rounded-xl font-bold border-2" style="background-color: #FFF9F0; border-color: #E8DDD0; color: #4A3728;">📸 Show QR Code</button> <button onclick="openUPIApp()" class="w-full py-3 px-4 rounded-xl font-bold border-2" style="background-color: #FFDD00; border-color: #4A3728; color: #4A3728;">🔗 Open UPI App</button>
+    </div><button id="proceed-btn" onclick="proceedToPayment()" class="w-full py-3 rounded-xl font-bold text-white hidden" style="background-color: #4A3728;">Proceed</button>
+   </div>
+  </div><!-- QR Code Modal -->
+  <div id="qr-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background-color: rgba(0,0,0,0.5);">
+   <div class="modal-content rounded-2xl p-6 mx-4 w-full max-w-sm" style="background-color: #FFFFFF;">
+    <div class="flex items-center justify-between mb-4">
+     <h3 class="text-xl font-bold" style="color: #4A3728;">Pay ₹<span id="qr-amount">0</span></h3><button onclick="closeQRModal()" class="text-2xl" style="color: #8B7355;">✕</button>
+    </div>
+    <div class="text-center">
+     <div id="qr-code-container" class="flex justify-center mb-4"></div>
+     <p class="text-sm mb-4" style="color: #8B7355;">Scan this QR code with any UPI app</p><button onclick="downloadQR()" class="w-full py-3 rounded-xl font-bold mb-2" style="background-color: #FFDD00; color: #4A3728; border: none;">📥 Download QR Code</button> <button onclick="completeQRPayment()" class="w-full py-3 rounded-xl font-bold" style="background-color: #4A3728; color: #FFDD00; border: none;">✓ Done</button>
+    </div>
+   </div>
+  </div><!-- Thank You Modal -->
+  <div id="thank-you-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background-color: rgba(0,0,0,0.7);">
+   <div class="thank-you-container rounded-2xl p-8 mx-4 w-full max-w-sm text-center" style="background-color: #FFFFFF;">
+    <div class="text-6xl mb-4">
+     🎉
+    </div>
+    <h2 class="thank-you-text text-3xl font-extrabold mb-4" style="color: #4A3728;">Thank You!</h2>
+    <p id="thank-you-msg" class="text-lg mb-6" style="color: #8B7355;">Thank you for your support, it means a lot! ☕✨</p><button onclick="backToHome()" class="w-full py-3 rounded-xl font-bold" style="background-color: #FFDD00; color: #4A3728; border: none;">🏠 Home</button>
+   </div>
+  </div>
+  <script>
+    const SITE = window.BMAC_CONFIG || {};
+    const UPI_ID = SITE.upiId || 'prashantkhati12345@okaxis';
+    if (SITE.githubUrl) {
+      const gh = document.getElementById('github-link');
+      if (gh) gh.href = SITE.githubUrl;
+    }
+    if (SITE.avatarUrl) {
+      const av = document.getElementById('creator-avatar');
+      if (av) {
+        av.src = SITE.avatarUrl;
+        if (SITE.creatorName) av.alt = SITE.creatorName;
+      }
+    }
+    let selectedAmount = 0;
+    let allSupporters = [];
+    let isSubmitting = false;
+
+    const defaultConfig = {
+      creator_name: SITE.creatorName || 'Prashant',
+      page_tagline: SITE.tagline || 'Fueling creativity, one coffee at a time ☕',
+      thank_you_message: SITE.thankYouMessage || 'Thank you for your support, it means a lot! ☕✨',
+      background_color: '#FFF9F0',
+      surface_color: '#FFFFFF',
+      text_color: '#4A3728',
+      accent_color: '#FFDD00',
+      secondary_text_color: '#8B7355',
+      font_family: 'Nunito',
+      font_size: 16
+    };
+
+    function openPaymentModal() {
+      const name = document.getElementById('supporter-name').value.trim();
+      if (!name) {
+        showToast('Please enter your name');
+        return;
+      }
+      document.getElementById('payment-modal').classList.remove('hidden');
+    }
+
+    function closePaymentModal() {
+      document.getElementById('payment-modal').classList.add('hidden');
+      selectedAmount = 0;
+      document.getElementById('custom-amount').value = '';
+      document.getElementById('payment-method').classList.add('hidden');
+      document.getElementById('proceed-btn').classList.add('hidden');
+    }
+
+    function selectAmount(amount) {
+      selectedAmount = amount;
+      document.getElementById('custom-amount').value = '';
+      document.getElementById('payment-method').classList.remove('hidden');
+      document.getElementById('proceed-btn').classList.add('hidden');
+    }
+
+    function proceedToPayment() {
+      const customAmount = document.getElementById('custom-amount').value;
+      if (customAmount) {
+        selectedAmount = parseInt(customAmount);
+      }
+      if (!selectedAmount || selectedAmount <= 0) {
+        showToast('Please select a valid amount');
+        return;
+      }
+      document.getElementById('payment-method').classList.remove('hidden');
+      document.getElementById('proceed-btn').classList.add('hidden');
+    }
+
+    document.getElementById('custom-amount').addEventListener('change', function() {
+      if (this.value) {
+        selectedAmount = parseInt(this.value) || 0;
+        document.getElementById('payment-method').classList.remove('hidden');
+      }
+    });
+
+    function showQRCode() {
+      if (!selectedAmount || selectedAmount <= 0) {
+        showToast('Please select a valid amount');
+        return;
+      }
+      const container = document.getElementById('qr-code-container');
+      container.innerHTML = '';
+      
+      const upiString = `upi://pay?pa=${UPI_ID}&tn=Buy%20Me%20Coffee&am=${selectedAmount}`;
+      
+      new QRCode(container, {
+        text: upiString,
+        width: 250,
+        height: 250,
+        colorDark: '#4A3728',
+        colorLight: '#FFFFFF'
+      });
+
+      document.getElementById('qr-amount').textContent = selectedAmount;
+      document.getElementById('qr-modal').dataset.amount = selectedAmount;
+      document.getElementById('qr-modal').classList.remove('hidden');
+      closePaymentModal();
+    }
+
+    function closeQRModal() {
+      document.getElementById('qr-modal').classList.add('hidden');
+    }
+
+    function downloadQR() {
+      const amount = document.getElementById('qr-amount').textContent;
+      const name = document.getElementById('supporter-name').value.trim() || 'Anonymous Supporter';
+      const date = new Date();
+      const dateStr = date.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+      const timeStr = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      // Create canvas for receipt
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 1100;
+      const ctx = canvas.getContext('2d');
+      
+      // White background
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Border
+      ctx.strokeStyle = '#FFDD00';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+      
+      // Title
+      ctx.fillStyle = '#4A3728';
+      ctx.font = 'bold 48px Nunito';
+      ctx.textAlign = 'center';
+      ctx.fillText('☕ Buy Me A Coffee', canvas.width / 2, 100);
+      
+      // Subtitle
+      ctx.font = '24px Nunito';
+      ctx.fillStyle = '#8B7355';
+      ctx.fillText('Payment Receipt', canvas.width / 2, 150);
+      
+      // Divider
+      ctx.strokeStyle = '#E8DDD0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(60, 180);
+      ctx.lineTo(canvas.width - 60, 180);
+      ctx.stroke();
+      
+      // Details - small font
+      ctx.textAlign = 'left';
+      ctx.font = '18px Nunito';
+      ctx.fillStyle = '#4A3728';
+      
+      let y = 240;
+      ctx.fillText(`Name: ${name}`, 80, y);
+      y += 40;
+      ctx.fillText(`Amount: ₹${amount}`, 80, y);
+      y += 40;
+      ctx.fillText(`Date: ${dateStr}`, 80, y);
+      y += 40;
+      ctx.fillText(`Time: ${timeStr}`, 80, y);
+      
+      // Divider before QR
+      y += 60;
+      ctx.strokeStyle = '#E8DDD0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(60, y);
+      ctx.lineTo(canvas.width - 60, y);
+      ctx.stroke();
+      
+      // QR Code - get from existing canvas
+      const existingQR = document.querySelector('#qr-code-container canvas');
+      if (existingQR) {
+        const qrImage = existingQR.toDataURL();
+        const qrImg = new Image();
+        qrImg.onload = () => {
+          ctx.drawImage(qrImg, (canvas.width - 380) / 2, y + 60, 380, 380);
+          
+          // GitHub link at bottom
+          ctx.font = 'bold 20px Nunito';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#4A3728';
+          ctx.fillText('Follow on GitHub', canvas.width / 2, canvas.height - 40);
+          ctx.fillStyle = '#0066CC';
+          ctx.font = 'bold 18px Nunito';
+          ctx.fillText(SITE.githubUrl || 'https://github.com/prakha194', canvas.width / 2, canvas.height - 10);
+          
+          // Download
+          const link = document.createElement('a');
+          link.href = canvas.toDataURL();
+          link.download = `payment-receipt-${amount}-${dateStr.replace(/\s/g, '')}.png`;
+          link.click();
+        };
+        qrImg.src = qrImage;
+      }
+    }
+
+    let upiAttempt = null;
+
+    function openUPIApp() {
+      if (!selectedAmount || selectedAmount <= 0) {
+        showToast('Please select a valid amount');
+        return;
+      }
+      const name = document.getElementById('supporter-name').value.trim() || 'Supporter';
+      const email = document.getElementById('supporter-email').value.trim() || 'no-email@example.com';
+      const amount = selectedAmount;
+
+      const upiString = `upi://pay?pa=${UPI_ID}&tn=${encodeURIComponent(name)}&am=${amount}`;
+
+      // We can't see the payment, but we can see whether the browser really
+      // handed over to a UPI app. Opening the "choose an app" sheet and
+      // cancelling it also hides the page for a moment, so a switch only
+      // counts once it has lasted long enough to be a real app.
+      if (upiAttempt) upiAttempt.stop();          // forget any earlier try
+
+      const MIN_AWAY_MS = 1500;
+      let hiddenAt = 0;
+      let settled = false;
+      let hinted = false;
+      let hintTimer, giveUpTimer;
+
+      const attempt = {
+        stop: function () {
+          if (settled) return;
+          settled = true;
+          teardown();
+        }
+      };
+
+      function teardown() {
+        document.removeEventListener('visibilitychange', onVisibility);
+        clearTimeout(hintTimer);
+        clearTimeout(giveUpTimer);
+        if (upiAttempt === attempt) upiAttempt = null;
+      }
+
+      function succeed() {
+        if (settled) return;
+        settled = true;
+        teardown();
+        closePaymentModal();
+        recordSupporter(name, email, amount);
+      }
+
+      function onVisibility() {
+        if (document.hidden) {
+          if (!hiddenAt) hiddenAt = Date.now();
+          return;
+        }
+        if (!hiddenAt) return;
+
+        const away = Date.now() - hiddenAt;
+        hiddenAt = 0;
+
+        if (away >= MIN_AWAY_MS) {
+          succeed();                              // a real app was opened
+        } else {
+          // Back within a moment: the app sheet was dismissed, nothing opened.
+          hinted = true;
+          showToast('No UPI app opened. Pick one, or use the QR code.');
+        }
+      }
+
+      document.addEventListener('visibilitychange', onVisibility);
+
+      // Still on this page after 2.5s means nothing opened at all.
+      hintTimer = setTimeout(function () {
+        if (!document.hidden && !hiddenAt && !hinted) {
+          hinted = true;
+          showToast('UPI app did not open. Try the QR code instead.');
+        }
+      }, 2500);
+
+      giveUpTimer = setTimeout(function () { attempt.stop(); }, 20000);
+
+      upiAttempt = attempt;
+      window.location.href = upiString;
+    }
+
+    async function recordSupporter(name, email, amount) {
+      if (!amount || amount <= 0) {
+        showToast('Invalid amount. Please try again.');
+        return;
+      }
+
+      if (allSupporters.length >= 999) {
+        showToast('Supporter list is full! Thank you all! ❤️');
+        return;
+      }
+
+      const btn = document.getElementById('support-btn');
+      btn.style.opacity = '0.6';
+      btn.style.pointerEvents = 'none';
+
+      const result = await window.dataSdk.create({
+        name: name,
+        email: email,
+        amount: amount,
+        created_at: new Date().toISOString()
+      });
+
+      if (result.isOk) {
+        const cfg = window.elementSdk.config || defaultConfig;
+        showThankYou(cfg.thank_you_message || defaultConfig.thank_you_message);
+        document.getElementById('supporter-name').value = '';
+        document.getElementById('supporter-email').value = '';
+        selectedAmount = 0;
+      } else {
+        showToast('Error recording support. Please try again.');
+      }
+
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    }
+
+    async function handlePaymentSuccess() {
+      const name = document.getElementById('supporter-name').value.trim() || 'Anonymous';
+      const email = document.getElementById('supporter-email').value.trim() || 'no-email@example.com';
+
+      if (!selectedAmount || selectedAmount <= 0) {
+        showToast('Invalid amount');
+        return;
+      }
+
+      if (allSupporters.length >= 999) {
+        showToast('Supporter list is full! Thank you all! ❤️');
+        return;
+      }
+
+      isSubmitting = true;
+      const btn = document.getElementById('support-btn');
+      btn.style.opacity = '0.6';
+      btn.style.pointerEvents = 'none';
+
+      const result = await window.dataSdk.create({
+        name: name,
+        email: email,
+        amount: selectedAmount,
+        created_at: new Date().toISOString()
+      });
+
+      if (result.isOk) {
+        const cfg = window.elementSdk.config || defaultConfig;
+        showThankYou(cfg.thank_you_message || defaultConfig.thank_you_message);
+        document.getElementById('supporter-name').value = '';
+        document.getElementById('supporter-email').value = '';
+        selectedAmount = 0;
+      } else {
+        showThankYou();
+      }
+
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+      isSubmitting = false;
+    }
+
+    function showThankYou(msg) {
+      document.getElementById('thank-you-msg').textContent = msg || (window.elementSdk.config?.thank_you_message || defaultConfig.thank_you_message);
+      document.getElementById('thank-you-modal').classList.remove('hidden');
+      createConfetti();
+    }
+
+    function closeThankYou() {
+      document.getElementById('thank-you-modal').classList.add('hidden');
+    }
+
+    function backToQR() {
+      closeThankYou();
+      document.getElementById('qr-modal').classList.remove('hidden');
+    }
+
+    function backToHome() {
+      closeThankYou();
+    }
+
+    function completeQRPayment() {
+      const savedAmount = parseInt(document.getElementById('qr-modal').dataset.amount) || selectedAmount;
+      
+      if (!savedAmount || savedAmount <= 0) {
+        showToast('Invalid amount. Please select again.');
+        return;
+      }
+      
+      selectedAmount = savedAmount;
+      closeQRModal();
+      handlePaymentSuccess();
+    }
+
+    function createConfetti() {
+      const emojis = ['🎉', '☕', '💛', '✨', '🎊', '💖'];
+      for (let i = 0; i < 30; i++) {
+        setTimeout(() => {
+          const piece = document.createElement('div');
+          piece.className = 'confetti-piece';
+          piece.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+          piece.style.left = Math.random() * 100 + 'vw';
+          piece.style.top = '-50px';
+          piece.style.fontSize = (Math.random() * 20 + 20) + 'px';
+          piece.style.opacity = '1';
+          document.body.appendChild(piece);
+          setTimeout(() => piece.remove(), 2500);
+        }, i * 30);
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = msg;
+      t.className = 'fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg font-semibold z-50 toast-enter';
+      t.style.backgroundColor = '#4A3728';
+      t.style.color = '#FFDD00';
+      setTimeout(() => { t.className = 'hidden'; }, 3000);
+    }
+
+    function escapeHtml(str) {
+      return String(str == null ? '' : str).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    }
+
+    function renderSupporters(data) {
+      const list = document.getElementById('supporters-list');
+      const noMsg = document.getElementById('no-supporters');
+      const countEl = document.getElementById('supporter-count');
+
+      if (!data || data.length === 0) {
+        if (noMsg) noMsg.style.display = '';
+        list.querySelectorAll('.s-card').forEach(el => el.remove());
+        countEl.textContent = '';
+        return;
+      }
+
+      if (noMsg) noMsg.style.display = 'none';
+
+      const sorted = [...data].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const existing = new Map([...list.querySelectorAll('.s-card')].map(el => [el.dataset.id, el]));
+
+      sorted.forEach((s, i) => {
+        const id = s.__backendId;
+        if (existing.has(id)) {
+          const el = existing.get(id);
+          el.querySelector('.s-name').textContent = s.name || 'Anonymous';
+          el.querySelector('.s-amount').textContent = `₹${s.amount || 0}`;
+          existing.delete(id);
+        } else {
+          const card = document.createElement('div');
+          card.className = 's-card supporter-item rounded-xl p-4 flex gap-3';
+          card.dataset.id = id;
+          card.style.backgroundColor = '#FFFFFF';
+          card.style.border = '1px solid #F0E8D8';
+          card.style.animationDelay = `${i * 0.05}s`;
+
+          const safeName = escapeHtml(s.name || 'Anonymous');
+          const initial = escapeHtml((s.name || 'A').trim()[0] || 'A').toUpperCase();
+
+          card.innerHTML = `
+            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style="background-color:#FFDD00;color:#4A3728;">${initial}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <span class="flex items-center gap-1 min-w-0">
+                  <span class="s-name font-bold truncate" style="color:#4A3728;">${safeName}</span>
+                  <svg class="s-verified shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="#1D9BF0" role="img" aria-label="Verified supporter"><title>Verified supporter</title><path d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.67.88-3.33 2.19c-1.4-.46-2.91-.2-3.92.81s-1.26 2.52-.8 3.91c-1.31.67-2.2 1.91-2.2 3.34s.89 2.67 2.2 3.34c-.46 1.39-.21 2.9.8 3.91s2.52 1.26 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34zm-11.71 4.2L6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z"></path></svg>
+                </span>
+                <span class="s-amount text-sm font-semibold whitespace-nowrap" style="color:#8B7355;">₹${s.amount || 0}</span>
+              </div>
+            </div>
+          `;
+          list.appendChild(card);
+        }
+      });
+
+      existing.forEach(el => el.remove());
+
+      const totalAmount = data.reduce((sum, s) => sum + (s.amount || 0), 0);
+      countEl.textContent = `₹${totalAmount} from ${data.length} supporter${data.length !== 1 ? 's' : ''} 💛`;
+    }
+
+    function applyConfig(config) {
+      const c = { ...defaultConfig, ...config };
+      const font = c.font_family || defaultConfig.font_family;
+      const baseFontStack = `${font}, 'Nunito', sans-serif`;
+      document.getElementById('app').style.fontFamily = baseFontStack;
+
+      document.getElementById('el-creator-name').textContent = c.creator_name;
+
+      document.getElementById('app').style.backgroundColor = c.background_color;
+      document.getElementById('el-creator-name').style.color = c.text_color;
+      document.getElementById('el-tagline').textContent = c.page_tagline;
+      document.getElementById('el-tagline').style.color = c.secondary_text_color;
+
+      const base = c.font_size || defaultConfig.font_size;
+      document.getElementById('el-creator-name').style.fontSize = `${base * 1.9}px`;
+      document.getElementById('el-tagline').style.fontSize = `${base * 1.1}px`;
+    }
+
+    window.elementSdk.init({
+      defaultConfig,
+      onConfigChange: async (config) => { applyConfig(config); },
+      mapToCapabilities: (config) => ({
+        recolorables: [
+          { get: () => config.background_color || defaultConfig.background_color, set: (v) => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+          { get: () => config.surface_color || defaultConfig.surface_color, set: (v) => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+          { get: () => config.text_color || defaultConfig.text_color, set: (v) => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+          { get: () => config.accent_color || defaultConfig.accent_color, set: (v) => { config.accent_color = v; window.elementSdk.setConfig({ accent_color: v }); } },
+          { get: () => config.secondary_text_color || defaultConfig.secondary_text_color, set: (v) => { config.secondary_text_color = v; window.elementSdk.setConfig({ secondary_text_color: v }); } }
+        ],
+        borderables: [],
+        fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: (v) => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+        fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: (v) => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } }
+      }),
+      mapToEditPanelValues: (config) => new Map([
+        ['creator_name', config.creator_name || defaultConfig.creator_name],
+        ['page_tagline', config.page_tagline || defaultConfig.page_tagline],
+        ['thank_you_message', config.thank_you_message || defaultConfig.thank_you_message]
+      ])
+    });
+
+    (async () => {
+      const result = await window.dataSdk.init({
+        onDataChanged(data) {
+          allSupporters = data;
+          renderSupporters(data);
+        }
+      });
+      if (!result.isOk) {
+        console.error('Data SDK init failed');
+      }
+    })();
+  </script>
+ </body>
+</html>
