@@ -7,13 +7,22 @@
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <script>
-    /* Standalone fallbacks.
+    /* Data layer.
        The original page loaded two builder-only scripts (/_sdk/element_sdk.js and
-       /_sdk/data_sdk.js) which do not exist on GitHub Pages, so the page threw at
-       load and the thank-you flow + supporter list never ran. These shims expose
-       the same APIs and persist supporters in the browser via localStorage. */
+       /_sdk/data_sdk.js) that do not exist on GitHub Pages. These shims expose the
+       same APIs. When a Neon Data API endpoint is configured below, supporters are
+       stored in Postgres and every visitor sees the same list; otherwise the page
+       falls back to this browser's localStorage. */
+    var BMAC_CONFIG = {
+      // Paste the Neon Data API endpoint here (Neon Console -> Data API).
+      // Example: 'https://ep-cool-name-123456.apirest.ap-southeast-1.aws.neon.tech/rest/v1'
+      dataApiUrl: '',
+      table: 'supporters'
+    };
+
     (function () {
       var STORE_KEY = 'bmac_supporters_v1';
+      var REMOTE = !!BMAC_CONFIG.dataApiUrl;
 
       function readStore() {
         try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; }
@@ -31,24 +40,75 @@
         listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
       }
 
+      function remoteUrl(qs) {
+        return BMAC_CONFIG.dataApiUrl.replace(/\/+$/, '') + '/' + BMAC_CONFIG.table + (qs || '');
+      }
+
+      function fetchRemote() {
+        return fetch(remoteUrl('?select=id,name,amount,created_at&order=created_at.desc&limit=200'), {
+          headers: { Accept: 'application/json' }
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+
+      function broadcast(list) {
+        listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
+      }
+
       window.dataSdk = {
         init: function (opts) {
-          if (opts && typeof opts.onDataChanged === 'function') {
-            listeners.push(opts.onDataChanged);
-            opts.onDataChanged(withIds(readStore()));
+          var cb = opts && opts.onDataChanged;
+          if (typeof cb === 'function') listeners.push(cb);
+
+          if (!REMOTE) {
+            if (typeof cb === 'function') cb(withIds(readStore()));
+            return Promise.resolve({ isOk: true });
           }
-          return Promise.resolve({ isOk: true });
+
+          return fetchRemote().then(function (rows) {
+            if (typeof cb === 'function') cb(withIds(rows || []));
+            return { isOk: true };
+          }).catch(function (err) {
+            console.warn('Neon read failed:', err);
+            if (typeof cb === 'function') cb(withIds(readStore()));
+            return { isOk: false };
+          });
         },
         create: function (record) {
+          // Email is intentionally never sent to the public table.
+          var row = { name: record.name, amount: record.amount, created_at: record.created_at };
+
+          if (REMOTE) {
+            return fetch(remoteUrl(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+              body: JSON.stringify(row)
+            }).then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return fetchRemote().then(function (rows) {
+                broadcast(withIds(rows || []));
+                return { isOk: true };
+              });
+            }).catch(function (err) {
+              console.warn('Neon write failed:', err);
+              return { isOk: false };
+            });
+          }
+
           var list = readStore();
-          list.push(Object.assign({}, record, {
+          list.push(Object.assign({}, row, {
             id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
           }));
           writeStore(list);
           emit();
           return Promise.resolve({ isOk: true });
         },
-        list: function () { return Promise.resolve(withIds(readStore())); }
+        list: function () {
+          if (REMOTE) return fetchRemote().then(function (rows) { return withIds(rows || []); });
+          return Promise.resolve(withIds(readStore()));
+        }
       };
 
       window.elementSdk = {
@@ -542,6 +602,12 @@
       setTimeout(() => { t.className = 'hidden'; }, 3000);
     }
 
+    function escapeHtml(str) {
+      return String(str == null ? '' : str).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    }
+
     function renderSupporters(data) {
       const list = document.getElementById('supporters-list');
       const noMsg = document.getElementById('no-supporters');
@@ -574,13 +640,17 @@
           card.style.border = '1px solid #F0E8D8';
           card.style.animationDelay = `${i * 0.05}s`;
 
-          const initial = (s.name || 'A')[0].toUpperCase();
+          const safeName = escapeHtml(s.name || 'Anonymous');
+          const initial = escapeHtml((s.name || 'A').trim()[0] || 'A').toUpperCase();
 
           card.innerHTML = `
             <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style="background-color:#FFDD00;color:#4A3728;">${initial}</div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-2">
-                <span class="s-name font-bold truncate" style="color:#4A3728;">${s.name || 'Anonymous'}</span>
+                <span class="flex items-center gap-1 min-w-0">
+                  <span class="s-name font-bold truncate" style="color:#4A3728;">${safeName}</span>
+                  <svg class="s-verified shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="#1D9BF0" role="img" aria-label="Verified supporter"><title>Verified supporter</title><path d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.67.88-3.33 2.19c-1.4-.46-2.91-.2-3.92.81s-1.26 2.52-.8 3.91c-1.31.67-2.2 1.91-2.2 3.34s.89 2.67 2.2 3.34c-.46 1.39-.21 2.9.8 3.91s2.52 1.26 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34zm-11.71 4.2L6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z"></path></svg>
+                </span>
                 <span class="s-amount text-sm font-semibold whitespace-nowrap" style="color:#8B7355;">₹${s.amount || 0}</span>
               </div>
             </div>
