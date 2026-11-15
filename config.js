@@ -6,13 +6,22 @@
 // ============================================================
 window.BMAC_CONFIG = {
 
-  // ---- Shared supporter list (Neon) --------------------------
-  // Leave '' and the page works, but each visitor only sees their
-  // own browser's list. Paste the Neon Data API endpoint to make
-  // the wall shared by everyone, e.g.
-  // 'https://ep-cool-name-123456.apirest.ap-southeast-1.aws.neon.tech/rest/v1'
-  dataApiUrl: '',
-  table: 'supporters',
+  // ---- Shared supporter wall (Firebase) ----------------------
+  // Paste your Firebase web app config here (Firebase console ->
+  // Project settings -> Your apps -> Web app -> Config).
+  // This block is public by design: it identifies your project,
+  // it does not grant access. Security comes from Firestore rules.
+  // Leave it empty and the page still works, but each visitor only
+  // sees their own browser's list.
+  firebase: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  },
+  collection: 'supporters',
 
   // ---- Payment ------------------------------------------------
   // Your UPI ID. Every QR code and "Open UPI App" button uses this.
