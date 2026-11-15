@@ -10,19 +10,22 @@
   <script>
     /* Data layer.
        The original page loaded two builder-only scripts (/_sdk/element_sdk.js and
-       /_sdk/data_sdk.js) that do not exist on GitHub Pages. These shims expose the
-       same APIs. When a Neon Data API endpoint is configured below, supporters are
-       stored in Postgres and every visitor sees the same list; otherwise the page
-       falls back to this browser's localStorage. */
-    // Everything editable lives in config.js — this file only reads it.
+       /_sdk/data_sdk.js) that do not exist on GitHub Pages, so the page threw at
+       load. These shims expose the same APIs. When Firebase is configured in
+       config.js, supporters live in Firestore and every visitor sees the same
+       wall; otherwise the page falls back to this browser's localStorage. */
     var BMAC_CONFIG = Object.assign(
-      { dataApiUrl: '', table: 'supporters' },
+      { firebase: {}, collection: 'supporters' },
       window.BMAC_CONFIG || {}
     );
 
     (function () {
       var STORE_KEY = 'bmac_supporters_v1';
-      var REMOTE = !!BMAC_CONFIG.dataApiUrl;
+      var FB = BMAC_CONFIG.firebase || {};
+      var REMOTE = !!(FB.projectId && FB.apiKey);
+      var COLLECTION = BMAC_CONFIG.collection || 'supporters';
+      var FS_ROOT = 'https://firestore.googleapis.com/v1/projects/' + FB.projectId +
+                    '/databases/(default)/documents';
 
       function readStore() {
         try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; }
@@ -39,22 +42,41 @@
         var list = withIds(readStore());
         listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
       }
+      function broadcast(list) {
+        listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
+      }
 
-      function remoteUrl(qs) {
-        return BMAC_CONFIG.dataApiUrl.replace(/\/+$/, '') + '/' + BMAC_CONFIG.table + (qs || '');
+      function docToRow(doc) {
+        var f = doc.fields || {};
+        return {
+          id: (doc.name || '').split('/').pop(),
+          name: f.name && f.name.stringValue ? f.name.stringValue : 'Anonymous',
+          amount: f.amount ? Number(f.amount.integerValue || f.amount.doubleValue || 0) : 0,
+          created_at: f.created_at
+            ? (f.created_at.timestampValue || f.created_at.stringValue || null)
+            : null
+        };
       }
 
       function fetchRemote() {
-        return fetch(remoteUrl('?select=id,name,amount,created_at&order=created_at.desc&limit=200'), {
-          headers: { Accept: 'application/json' }
+        return fetch(FS_ROOT + ':runQuery?key=' + encodeURIComponent(FB.apiKey), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: COLLECTION }],
+              orderBy: [{ field: { fieldPath: 'created_at' }, direction: 'DESCENDING' }],
+              limit: 200
+            }
+          })
         }).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
+          if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 200)); });
           return r.json();
+        }).then(function (rows) {
+          return (rows || [])
+            .filter(function (x) { return x && x.document; })
+            .map(function (x) { return docToRow(x.document); });
         });
-      }
-
-      function broadcast(list) {
-        listeners.forEach(function (fn) { try { fn(list); } catch (e) { console.warn(e); } });
       }
 
       window.dataSdk = {
@@ -71,28 +93,34 @@
             if (typeof cb === 'function') cb(withIds(rows || []));
             return { isOk: true };
           }).catch(function (err) {
-            console.warn('Neon read failed:', err);
+            console.warn('Firestore read failed:', err);
             if (typeof cb === 'function') cb(withIds(readStore()));
             return { isOk: false };
           });
         },
         create: function (record) {
-          // Email is intentionally never sent to the public table.
+          // Email is intentionally never sent to the public collection.
           var row = { name: record.name, amount: record.amount, created_at: record.created_at };
 
           if (REMOTE) {
-            return fetch(remoteUrl(), {
+            return fetch(FS_ROOT + '/' + COLLECTION + '?key=' + encodeURIComponent(FB.apiKey), {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-              body: JSON.stringify(row)
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fields: {
+                  name: { stringValue: String(row.name) },
+                  amount: { integerValue: String(row.amount) },
+                  created_at: { timestampValue: row.created_at }
+                }
+              })
             }).then(function (r) {
-              if (!r.ok) throw new Error('HTTP ' + r.status);
+              if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 200)); });
               return fetchRemote().then(function (rows) {
                 broadcast(withIds(rows || []));
                 return { isOk: true };
               });
             }).catch(function (err) {
-              console.warn('Neon write failed:', err);
+              console.warn('Firestore write failed:', err);
               return { isOk: false };
             });
           }
@@ -111,7 +139,7 @@
         }
       };
 
-      window.elementSdk = {
+    window.elementSdk = {
         config: null,
         init: function (opts) {
           this.config = Object.assign({}, (opts && opts.defaultConfig) || {});
