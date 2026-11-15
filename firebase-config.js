@@ -35,7 +35,11 @@ window.BMAC_CONFIG = {
   thankYouMessage: 'Thank you for your support, it means a lot! ☕✨',
 
   // ---- Links --------------------------------------------------
-  githubUrl: 'https://github.com/prakha194'
+  githubUrl: 'https://github.com/prakha194',
+
+  // Your profile picture, shown in the yellow circle at the top.
+  // The .png form of a GitHub profile gives the avatar image.
+  avatarUrl: 'https://github.com/prakha194.png'
 
 };
 
@@ -119,7 +123,9 @@ window.BMAC_CONFIG = {
       var cb = opts && opts.onDataChanged;
       if (typeof cb === 'function') listeners.push(cb);
 
-      return fetchRemote().then(function (rows) {
+      // Promise.resolve() first so a synchronous throw (e.g. no fetch in an
+      // old browser) becomes a rejection we can catch instead of a crash.
+      return Promise.resolve().then(fetchRemote).then(function (rows) {
         if (typeof cb === 'function') cb(withIds(rows || []));
         return { isOk: true };
       }).catch(function (err) {
@@ -130,16 +136,18 @@ window.BMAC_CONFIG = {
 
     // Adds one supporter row. Email is deliberately never sent.
     create: function (record) {
-      return fetch(FS_ROOT + '/' + COLLECTION + KEY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            name: { stringValue: String(record.name) },
-            amount: { integerValue: String(record.amount) },
-            created_at: { timestampValue: record.created_at }
-          }
-        })
+      return Promise.resolve().then(function () {
+        return fetch(FS_ROOT + '/' + COLLECTION + KEY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              name: { stringValue: String(record.name) },
+              amount: { integerValue: String(record.amount) },
+              created_at: { timestampValue: record.created_at }
+            }
+          })
+        });
       }).then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
